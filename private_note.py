@@ -44,6 +44,7 @@ class PrivateNote:
         self.root.attributes("-topmost", True)
         self.excluded = False
         self.hidden = False
+        self.auto_hidden = False
         self.hotkey_down = False
         self.build_ui()
         self.apply_capture_exclusion()
@@ -51,6 +52,7 @@ class PrivateNote:
         self.root.bind("<Control-s>", lambda e: self.save_note())
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.hotkey_timer = self.root.after(80, self.poll_hotkey)
+        self.display_timer = self.root.after(1000, self.poll_displays)
 
     def build_ui(self):
         header = tk.Frame(self.root, bg="#151918")
@@ -114,6 +116,31 @@ class PrivateNote:
                 return item[1:]
         return (0, 0, self.root.winfo_screenwidth(), self.root.winfo_screenheight())
 
+    def monitor_count(self):
+        """返回当前 Windows 识别到的物理显示器数量。"""
+        count = 0
+        monitor_enum = ctypes.WINFUNCTYPE(ctypes.c_int, wintypes.HMONITOR, wintypes.HDC, ctypes.POINTER(wintypes.RECT), wintypes.LPARAM)
+        def callback(_handle, _hdc, _rect, _data):
+            nonlocal count
+            count += 1
+            return 1
+        ctypes.windll.user32.EnumDisplayMonitors(0, 0, monitor_enum(callback), 0)
+        return count
+
+    def poll_displays(self):
+        """检测投影/副屏：多显示器时自动隐藏，恢复单屏时再显示。"""
+        if self.root.winfo_exists():
+            multiple = self.monitor_count() > 1
+            if multiple and not self.hidden:
+                self.auto_hidden = True
+                self.root.withdraw()
+            elif not multiple and self.auto_hidden and self.hidden is False:
+                self.auto_hidden = False
+                self.root.deiconify()
+                self.root.attributes("-topmost", True)
+                self.apply_capture_exclusion()
+            self.display_timer = self.root.after(1000, self.poll_displays)
+
     def keep_on_primary(self):
         self.root.update_idletasks()
         left, top, right, bottom = self.primary_work_area()
@@ -149,6 +176,7 @@ class PrivateNote:
 
     def toggle_visibility(self):
         self.hidden = not self.hidden
+        self.auto_hidden = False
         if self.hidden:
             self.save_config()
             self.root.withdraw()
@@ -167,6 +195,8 @@ class PrivateNote:
     def close(self):
         if hasattr(self, "hotkey_timer"):
             self.root.after_cancel(self.hotkey_timer)
+        if hasattr(self, "display_timer"):
+            self.root.after_cancel(self.display_timer)
         self.save_config()
         self.root.destroy()
 
