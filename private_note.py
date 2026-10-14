@@ -76,7 +76,7 @@ class PrivateNote:
         self.text.bind("<KeyRelease>", lambda e: self.save_config())
         footer = tk.Frame(self.root, bg="#151918")
         footer.pack(fill="x", padx=12, pady=(0, 8))
-        tk.Label(footer, text="Ctrl+S 保存 · Esc 退出 · 可直接 Ctrl+V 粘贴", bg="#151918", fg="#829088", font=("Microsoft YaHei UI", 8)).pack(side="left")
+        tk.Label(footer, text="Ctrl+S 保存 · Esc 不会关闭 · 可直接 Ctrl+V 粘贴", bg="#151918", fg="#829088", font=("Microsoft YaHei UI", 8)).pack(side="left")
         tk.Button(footer, text="重新检测", command=self.apply_capture_exclusion, bg="#151918", fg="#cbd4ce", relief="flat", bd=0).pack(side="right")
         self.grip = tk.Label(self.root, text="◢", bg="#151918", fg="#829088", cursor="size_nw_se", font=("Segoe UI", 9))
         self.grip.place(relx=1, rely=1, anchor="se")
