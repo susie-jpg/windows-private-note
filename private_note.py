@@ -10,6 +10,12 @@ from tkinter import messagebox
 STATE = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "PrivateNote"
 CONFIG = STATE / "settings.json"
 WDA_EXCLUDEFROMCAPTURE = 0x11
+MONITORINFOF_PRIMARY = 1
+
+
+class MonitorInfo(ctypes.Structure):
+    _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT),
+                ("rcWork", wintypes.RECT), ("dwFlags", wintypes.DWORD)]
 
 
 def load_config():
@@ -41,6 +47,7 @@ class PrivateNote:
         self.hotkey_down = False
         self.build_ui()
         self.apply_capture_exclusion()
+        self.keep_on_primary()
         self.root.bind("<Control-s>", lambda e: self.save_note())
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.hotkey_timer = self.root.after(80, self.poll_hotkey)
@@ -87,14 +94,43 @@ class PrivateNote:
         self.offset = (event.x_root - self.root.winfo_x(), event.y_root - self.root.winfo_y())
 
     def drag(self, event):
-        self.root.geometry(f"+{event.x_root-self.offset[0]}+{event.y_root-self.offset[1]}")
+        x, y = event.x_root-self.offset[0], event.y_root-self.offset[1]
+        left, top, right, bottom = self.primary_work_area()
+        self.root.geometry(f"+{max(left, min(x, right-self.root.winfo_width()))}+{max(top, min(y, bottom-self.root.winfo_height()))}")
+
+    def primary_work_area(self):
+        """返回主显示器扣除任务栏后的工作区。"""
+        monitors = []
+        monitor_enum = ctypes.WINFUNCTYPE(ctypes.c_int, wintypes.HMONITOR, wintypes.HDC, ctypes.POINTER(wintypes.RECT), wintypes.LPARAM)
+        def callback(handle, _hdc, _rect, _data):
+            info = MonitorInfo()
+            info.cbSize = ctypes.sizeof(info)
+            if ctypes.windll.user32.GetMonitorInfoW(handle, ctypes.byref(info)):
+                monitors.append((info.dwFlags, info.rcWork.left, info.rcWork.top, info.rcWork.right, info.rcWork.bottom))
+            return 1
+        ctypes.windll.user32.EnumDisplayMonitors(0, 0, monitor_enum(callback), 0)
+        for item in monitors:
+            if item[0] & MONITORINFOF_PRIMARY:
+                return item[1:]
+        return (0, 0, self.root.winfo_screenwidth(), self.root.winfo_screenheight())
+
+    def keep_on_primary(self):
+        self.root.update_idletasks()
+        left, top, right, bottom = self.primary_work_area()
+        x, y = self.root.winfo_x(), self.root.winfo_y()
+        x = max(left, min(x, right-self.root.winfo_width()))
+        y = max(top, min(y, bottom-self.root.winfo_height()))
+        self.root.geometry(f"+{x}+{y}")
 
     def start_resize(self, event):
         self.resize_origin = (event.x_root, event.y_root, self.root.winfo_width(), self.root.winfo_height())
 
     def drag_resize(self, event):
         x, y, width, height = self.resize_origin
-        self.root.geometry(f"{max(300, width + event.x_root - x)}x{max(220, height + event.y_root - y)}")
+        left, top, right, bottom = self.primary_work_area()
+        new_width = max(300, min(width + event.x_root - x, right - self.root.winfo_x()))
+        new_height = max(220, min(height + event.y_root - y, bottom - self.root.winfo_y()))
+        self.root.geometry(f"{new_width}x{new_height}")
 
     def poll_hotkey(self):
         """轮询全局按键状态，隐藏后仍可用 Ctrl+Shift+H 恢复。"""
